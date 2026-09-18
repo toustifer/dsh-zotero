@@ -90,7 +90,7 @@ function isPlainReadCommand(text: string): boolean {
 
 /** 浮窗打开请求（面板 dispatch / 本窗监听）。 */
 export function dispatchChatOpen(detail:
-  | { target: 'paper'; itemKey: string; title: string; sendRead?: boolean; parent?: string; cwd?: string }
+  | { target: 'paper'; itemKey: string; title: string; sendRead?: boolean; parent?: string; cwd?: string; quote?: { page: number; text: string } }
   | { target: 'library'; parent?: string; cwd?: string }
 ): void {
   window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail }))
@@ -126,11 +126,26 @@ export function ChatWindow(): JSX.Element {
   /* ── 打开/切换：面板按钮事件 ── */
   useEffect(() => {
     const onOpen = (ev: Event): void => {
-      const detail = (ev as CustomEvent).detail as { target: string; itemKey?: string; title?: string; sendRead?: boolean; parent?: string; cwd?: string }
+      const detail = (ev as CustomEvent).detail as {
+        target: string
+        itemKey?: string
+        title?: string
+        sendRead?: boolean
+        parent?: string
+        cwd?: string
+        quote?: { page: number; text: string }
+      }
       setHidden(false)
       if (detail.cwd) setActiveCwd(detail.cwd)
       if (detail.target === 'paper' && detail.itemKey) {
-        void openPaper(detail.itemKey, detail.title ?? '', 0, detail.sendRead ?? false, detail.parent ?? '', detail.cwd ?? activeCwd)
+        void (async () => {
+          const sid = await openPaper(detail.itemKey!, detail.title ?? '', 0, detail.sendRead ?? false, detail.parent ?? '', detail.cwd ?? activeCwd)
+          if (detail.quote && sid) {
+            const quoteText = `> 📖 **【第 P${detail.quote.page} 页选段精读】**\n> ${detail.quote.text}\n\n请针对上述选段进行深度剖析：\n1. 核心论点与研究背景\n2. 关键公式/推导或实验方法解读\n3. 该选段在全篇论文中的承上启下意义`
+            const chip: PaperChip = { itemKey: detail.itemKey!, title: detail.title || detail.itemKey!, mode: 'pdf' }
+            void send(quoteText, [chip])
+          }
+        })()
       } else if (detail.target === 'library') {
         void openLibrary(detail.parent ?? '', detail.cwd ?? activeCwd)
       }

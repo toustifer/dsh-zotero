@@ -49,6 +49,7 @@ import {
 import { retrieveEvidence, formatEvidencePack } from './retrieval/service.ts'
 import { resolveModel, streamText } from './ml.ts'
 import { composeConfig, currentConfig, setActiveConfig, writeOverlay } from './runtime.ts'
+import { annotateItem } from './backend/annotations.ts'
 
 export const PLUGIN_ID = '@dsh-external/dsh-zotero'
 export const API_PREFIX = '/@dsh-external/dsh-zotero/api'
@@ -715,6 +716,15 @@ async function handle(
       if (path === '/chat-messages' && query.get('sessionId')) {
         return send(res, 200, { messages: chatMessages(query.get('sessionId')!) })
       }
+      if (path === '/annotations' && query.get('itemKey')) {
+        const itemKey = query.get('itemKey')!
+        try {
+          const resData = await client.scoped().getItem(itemKey)
+          return send(res, 200, { ok: true, annotations: resData.item?.annotations ?? [] })
+        } catch (err: any) {
+          return send(res, 200, { ok: false, annotations: [], error: String(err?.message ?? err) })
+        }
+      }
       if (path === '/pdf' && query.get('key')) {
         await streamPdf(req, res, client, query.get('key')!)
         return
@@ -821,6 +831,25 @@ async function handle(
       }
       if (path === '/translate') {
         return send(res, 200, await translateOf(deps, body))
+      }
+      if (path === '/annotate') {
+        const itemKey = String(body.itemKey ?? '')
+        if (!itemKey) return send(res, 200, { ok: false, error: '需要 itemKey' })
+        const result = await annotateItem(client.scoped(), {
+          itemKey,
+          type: (body.type as any) || 'highlight',
+          text: body.text ? String(body.text) : undefined,
+          comment: body.comment ? String(body.comment) : undefined,
+          color: body.color ? String(body.color) : undefined,
+          pageLabel: body.pageLabel !== undefined ? String(body.pageLabel) : undefined,
+          attachmentKey: body.attachmentKey ? String(body.attachmentKey) : undefined,
+          tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+          markdownPath: body.markdownPath ? String(body.markdownPath) : undefined,
+          exportMarkdown: body.exportMarkdown !== false,
+          syncToZotero: body.syncToZotero !== false,
+          workspaceDir: body.workspaceDir ? String(body.workspaceDir) : undefined,
+        })
+        return send(res, 200, result)
       }
       if (path === '/fulltranslate/start') {
         const itemKey = String(body.itemKey ?? '')

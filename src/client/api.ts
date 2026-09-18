@@ -140,3 +140,39 @@ export async function pdf2zhCancel(attachmentKey: string): Promise<{ ok: boolean
 export function pdf2zhFileUrl(attachmentKey: string, type: 'dual' | 'mono' = 'dual'): string {
   return `${API}/pdf2zh/file?attachmentKey=${encodeURIComponent(attachmentKey)}&type=${type}`
 }
+
+/* ── 划线高亮 & 批注 / 便签 API ── */
+
+export interface AnnotatePayload {
+  itemKey: string
+  attachmentKey?: string
+  type?: 'highlight' | 'note' | 'comment'
+  text?: string
+  comment?: string
+  color?: string
+  pageLabel?: string
+  tags?: string[]
+  markdownPath?: string
+  exportMarkdown?: boolean
+  syncToZotero?: boolean
+  workspaceDir?: string
+}
+
+export async function annotatePost(payload: AnnotatePayload): Promise<any> {
+  const res = await fetch(`${API}/annotate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
+export async function fetchAnnotations(itemKey: string): Promise<any[]> {
+  try {
+    const res = await fetch(`${API}/annotations?itemKey=${encodeURIComponent(itemKey)}`)
+    const j = await res.json()
+    return j.annotations ?? []
+  } catch {
+    return []
+  }
+}

@@ -355,6 +355,86 @@ export const CSS = `
   animation:dshz-pop-in .14s ease both;
 }
 .dshz-sel:hover{background:#3D9BFF}
+
+/* ── PDF 划词浮动 Action Bar ── */
+.dshz-action-bar{
+  position:fixed;z-index:90;transform:translate(-50%,-100%);
+  background:rgba(28,28,30,.92);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8);
+  border:1px solid rgba(255,255,255,.14);border-radius:24px;
+  padding:4px 6px;display:flex;align-items:center;gap:3px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+  animation:dshz-pop-in .15s ease both;
+  user-select:none;
+}
+.dshz-action-btn{
+  background:transparent;border:0;color:var(--ios-fg);
+  font-size:12px;font-weight:500;padding:5px 9px;border-radius:18px;
+  cursor:pointer;display:inline-flex;align-items:center;gap:4px;
+  white-space:nowrap;transition:background .15s ease,transform .1s ease;
+  font-family:inherit;
+}
+.dshz-action-btn:hover{background:rgba(255,255,255,.12)}
+.dshz-action-btn:active{transform:scale(.95)}
+.dshz-action-btn.active{background:rgba(10,132,255,.25);color:#6CB2FF}
+
+/* 颜色选择器展开条 */
+.dshz-color-popover{
+  display:flex;align-items:center;gap:6px;padding:2px 6px;
+  background:rgba(44,44,46,.95);border-radius:16px;margin-left:2px;
+  border:1px solid rgba(255,255,255,.12);
+}
+.dshz-color-dot{
+  width:17px;height:17px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;transition:transform .12s ease,border-color .12s ease;
+}
+.dshz-color-dot:hover{transform:scale(1.25);border-color:#fff}
+
+/* 便签弹窗 */
+.dshz-note-popover{
+  position:fixed;z-index:95;width:min(320px,90vw);
+  background:rgba(36,36,38,.96);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);
+  border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:10px 12px;
+  box-shadow:0 16px 40px rgba(0,0,0,.6);transform:translateX(-50%);
+  animation:dshz-pop-in .15s ease both;
+  display:flex;flex-direction:column;gap:8px;
+}
+.dshz-note-popover textarea{
+  width:100%;height:75px;background:rgba(0,0,0,.25);border:1px solid var(--ios-sep);
+  border-radius:10px;color:var(--ios-fg);padding:8px 10px;font-size:12.5px;
+  font-family:inherit;resize:none;outline:none;
+}
+.dshz-note-popover textarea:focus{border-color:var(--ios-blue)}
+.dshz-note-popover-foot{display:flex;align-items:center;justify-content:space-between;gap:6px}
+
+/* 高亮层与矩形色块 */
+.dshz-anno-layer{
+  position:absolute;inset:0;pointer-events:none;z-index:3;
+}
+.dshz-hl-rect{
+  position:absolute;pointer-events:auto;border-radius:2px;
+  mix-blend-mode:multiply;opacity:.46;
+  transition:opacity .15s ease;
+}
+.dshz-hl-rect:hover{opacity:.72}
+
+/* 便签小标记 */
+.dshz-note-pin{
+  position:absolute;pointer-events:auto;cursor:pointer;
+  font-size:14px;line-height:1;transform:translate(2px,-6px);
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));
+  transition:transform .15s ease;
+  z-index:4;
+}
+.dshz-note-pin:hover{transform:translate(2px,-8px) scale(1.25)}
+
+/* 便签查看悬浮气泡 */
+.dshz-note-tooltip{
+  position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  background:rgba(28,28,30,.95);border:1px solid rgba(255,255,255,.15);
+  border-radius:10px;padding:6px 10px;font-size:12px;line-height:1.5;
+  color:var(--ios-fg);max-width:240px;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,.5);
+  pointer-events:none;white-space:pre-wrap;z-index:10;
+}
 .dshz-bubble{
   position:fixed;z-index:41;width:min(440px,92vw);max-height:60vh;overflow:auto;
   background:rgba(44,44,46,.95);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);
