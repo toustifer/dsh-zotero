@@ -748,8 +748,131 @@ export function PdfReader(props: PdfReaderProps): JSX.Element {
           <button className="dshz-btn" title="在 Zotero 阅读器打开" onClick={() => { void fetch(`${API}/open?key=${encodeURIComponent(attachmentKey)}&target=zotero`).catch(() => {}) }}>Zotero</button>
         </div>
       ) : null}
-      {/* 划词翻译浮钮 */}
-      {selBtn && !translating && !bubble?.text && !bubble?.error ? (
+      {/* 划选 Action Bar */}
+      {actionBar && !translating && !bubble?.text && !bubble?.error ? (
+        <div className="dshz-action-bar" style={{ left: actionBar.x, top: actionBar.y }}>
+          {/* 🖍️ 高亮 */}
+          <button
+            className={`dshz-action-btn ${colorMenuOpen ? 'active' : ''}`}
+            title="添加划线高亮"
+            onClick={() => setColorMenuOpen((v) => !v)}
+          >
+            <span>🖍️</span>
+            <span>高亮</span>
+          </button>
+
+          {/* 颜色快速展开 */}
+          {colorMenuOpen && (
+            <div className="dshz-color-popover">
+              {HIGHLIGHT_COLORS.map((c) => (
+                <div
+                  key={c.color}
+                  className="dshz-color-dot"
+                  style={{ backgroundColor: c.color }}
+                  title={`${c.label} (${c.name})`}
+                  onClick={() => void applyHighlight(c.color)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 📝 记笔记/便签 */}
+          <button
+            className={`dshz-action-btn ${noteOpen ? 'active' : ''}`}
+            title="为选中文本添加心得便签"
+            onClick={() => {
+              setNoteOpen((v) => !v)
+              setColorMenuOpen(false)
+            }}
+          >
+            <span>📝</span>
+            <span>便签</span>
+          </button>
+
+          {/* 🌐 划词翻译 */}
+          <button
+            className="dshz-action-btn"
+            title="划词翻译选中文本"
+            onClick={() => void doTranslate()}
+          >
+            <span>🌐</span>
+            <span>翻译</span>
+          </button>
+
+          {/* 💬 发送到 Chat 精读 */}
+          <button
+            className="dshz-action-btn"
+            title="向文献 Chat 窗口发送该选段进行精读剖析"
+            onClick={sendToChat}
+          >
+            <span>💬</span>
+            <span>Chat 精读</span>
+          </button>
+        </div>
+      ) : null}
+
+      {/* 📝 便签轻量输入卡片 */}
+      {noteOpen && actionBar && (
+        <div className="dshz-note-popover" style={{ left: actionBar.x, top: (actionBar.bottom ?? actionBar.y) + 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ios-fg)' }}>📝 记心得便签 (P{actionBar.page})</span>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {HIGHLIGHT_COLORS.map((c) => (
+                <div
+                  key={c.color}
+                  className="dshz-color-dot"
+                  style={{
+                    backgroundColor: c.color,
+                    borderColor: selectedColor === c.color ? '#fff' : 'transparent',
+                    transform: selectedColor === c.color ? 'scale(1.2)' : 'none',
+                  }}
+                  onClick={() => setSelectedColor(c.color)}
+                  title={c.label}
+                />
+              ))}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ios-dim)', maxHeight: 36, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            选段: "{actionBar.text}"
+          </div>
+          <textarea
+            placeholder="在此输入阅读心得、公式推导或批判性思考…"
+            value={noteContent}
+            autoFocus
+            onChange={(e) => setNoteContent(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault()
+                void saveNote()
+              }
+            }}
+          />
+          <div className="dshz-note-popover-foot">
+            <span style={{ fontSize: 11, color: 'var(--ios-dim2)' }}>按 ⌘/Ctrl+Enter 快速保存</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="dshz-btn" onClick={() => setNoteOpen(false)}>取消</button>
+              <button className="dshz-btn primary" onClick={() => void saveNote()}>保存便签</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 轻量 Toast 提示 */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(30,30,32,0.92)', backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20,
+          padding: '6px 16px', color: '#fff', fontSize: 12.5, fontWeight: 500,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 120, pointerEvents: 'none',
+          animation: 'dshz-pop-in .15s ease both'
+        }}>
+          {toast}
+        </div>
+      )}
+
+      {/* 划词翻译浮钮（备用） */}
+      {selBtn && !actionBar && !translating && !bubble?.text && !bubble?.error ? (
         <button className="dshz-sel" style={{ left: selBtn.x, top: selBtn.y }} onClick={() => void doTranslate()}>
           译
         </button>
@@ -789,6 +912,7 @@ export function PdfReader(props: PdfReaderProps): JSX.Element {
           Array.from({ length: numPages }, (_v, idx) => {
             const i = idx + 1
             const w = Math.max(120, pageW * factor)
+            const pageAnnos = annotations.filter((a) => a.page === i)
             return (
               <div
                 key={i}
@@ -802,6 +926,53 @@ export function PdfReader(props: PdfReaderProps): JSX.Element {
               >
                 <canvas />
                 <div className="tl" />
+                {/* 高亮与便签层 */}
+                <div className="dshz-anno-layer">
+                  {pageAnnos.map((anno) => (
+                    <div key={anno.id}>
+                      {anno.rects?.map((r, rIdx) => (
+                        <div
+                          key={rIdx}
+                          className="dshz-hl-rect"
+                          style={{
+                            left: `${r.left * 100}%`,
+                            top: `${r.top * 100}%`,
+                            width: `${r.width * 100}%`,
+                            height: `${r.height * 100}%`,
+                            backgroundColor: anno.color || '#ffd400',
+                          }}
+                          title={anno.comment ? `📝 便签: ${anno.comment}` : `🖍️ 高亮: ${anno.text}`}
+                        />
+                      ))}
+                      {anno.comment && anno.rects && anno.rects.length > 0 && (
+                        <div
+                          className="dshz-note-pin"
+                          style={{
+                            left: `${(anno.rects[anno.rects.length - 1].left + anno.rects[anno.rects.length - 1].width) * 100}%`,
+                            top: `${anno.rects[anno.rects.length - 1].top * 100}%`,
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setActiveTooltip((cur) => (cur === anno.id ? null : anno.id))
+                          }}
+                          onMouseEnter={() => setActiveTooltip(anno.id)}
+                          onMouseLeave={() => setActiveTooltip((cur) => (cur === anno.id ? null : cur))}
+                        >
+                          📝
+                          {activeTooltip === anno.id && (
+                            <div className="dshz-note-tooltip">
+                              <div style={{ fontWeight: 600, color: '#FFD400', marginBottom: 2 }}>心得笔记：</div>
+                              <div>{anno.comment}</div>
+                              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--ios-dim)', borderTop: '1px solid var(--ios-sep)', paddingTop: 3 }}>
+                                原文: "{anno.text.slice(0, 40)}{anno.text.length > 40 ? '…' : ''}"
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )
           })
