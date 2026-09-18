@@ -14,7 +14,19 @@ import {
   type PDFDocumentProxy,
   type PDFPageProxy,
 } from 'pdfjs-dist'
-import { API, fetchTranslateTargetLang, translateTextSmart, pdf2zhStart, pdf2zhStatus, pdf2zhCancel, pdf2zhFileUrl, type Pdf2zhJob } from './api'
+import {
+  API,
+  fetchTranslateTargetLang,
+  translateTextSmart,
+  pdf2zhStart,
+  pdf2zhStatus,
+  pdf2zhCancel,
+  pdf2zhFileUrl,
+  type Pdf2zhJob,
+  annotatePost,
+  fetchAnnotations,
+} from './api'
+import { dispatchChatOpen } from './ChatWindow'
 import { ContrastView } from './ContrastView'
 
 // worker 由 host 静态提供（panel-api GET /pdfjs-worker）；失败时 pdfjs 自动降级主线程。
@@ -25,9 +37,30 @@ const ZOOM_MIN = 0.5
 const ZOOM_MAX = 3
 const RENDER_MARGIN = 700 // px，视口外多少范围内保持渲染
 
+export interface AnnotationItem {
+  id: string
+  itemKey?: string
+  attachmentKey?: string
+  type: 'highlight' | 'note' | 'comment'
+  color: string // 如 '#ffd400', '#51cf66', '#ff6b6b', '#339af0'
+  text: string
+  comment?: string
+  page: number
+  rects?: Array<{ left: number; top: number; width: number; height: number }>
+  createdAt: number
+}
+
+const HIGHLIGHT_COLORS = [
+  { name: '黄', color: '#ffd400', label: '重点' },
+  { name: '绿', color: '#51cf66', label: '方法' },
+  { name: '红', color: '#ff6b6b', label: '疑问' },
+  { name: '蓝', color: '#339af0', label: '定义' },
+]
+
 interface PdfReaderProps {
   attachmentKey: string
   itemKey?: string
+  title?: string
   /** 返回列表（沉浸阅读时由外部提供；无则不显示该按钮）。 */
   onBack?: () => void
 }
