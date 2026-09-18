@@ -44,8 +44,12 @@ function linkPkg(rel, source) {
   const link = join(NM, rel)
   if (abs.toLowerCase() === link.toLowerCase()) return
   try {
-    rmSync(link, { recursive: true, force: true })
-  } catch {}
+    rmdirSync(link)
+  } catch {
+    try {
+      unlinkSync(link)
+    } catch {}
+  }
   mkdirSync(dirname(link), { recursive: true })
   symlinkSync(abs, link, process.platform === 'win32' ? 'junction' : 'dir')
 }
