@@ -221,11 +221,82 @@ export function PdfReader(props: PdfReaderProps): JSX.Element {
     return () => { cancelled = true }
   }, [attachmentKey])
 
-  // 划词状态
+  // 批注状态与本地持久化
+  const storageKey = `dshz-annos-${attachmentKey}`
+  const [annotations, setAnnotations] = useState<AnnotationItem[]>(() => {
+    try {
+      const raw = localStorage.getItem(`dshz-annos-${attachmentKey}`)
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  })
+
+  const saveAnnotations = useCallback((newAnnos: AnnotationItem[]) => {
+    setAnnotations(newAnnos)
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(newAnnos))
+    } catch { /* noop */ }
+  }, [storageKey])
+
+  // 远端批注同步
+  useEffect(() => {
+    if (!itemKey) return
+    let cancelled = false
+    void fetchAnnotations(itemKey).then((remoteList) => {
+      if (cancelled || !Array.isArray(remoteList) || remoteList.length === 0) return
+      setAnnotations((prev) => {
+        const merged = [...prev]
+        for (const rem of remoteList) {
+          const remText = rem.annotationText || rem.text || ''
+          const remComment = rem.annotationComment || rem.comment || ''
+          const remPage = rem.pageLabel ? Number(rem.pageLabel) : 1
+          const exists = merged.some((a) => (a.id === rem.key) || (a.text === remText && a.page === remPage))
+          if (!exists) {
+            merged.push({
+              id: rem.key || `rem-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              itemKey,
+              attachmentKey,
+              type: rem.annotationType || (remComment ? 'note' : 'highlight'),
+              color: rem.color || rem.annotationColor || '#ffd400',
+              text: remText,
+              comment: remComment,
+              page: isNaN(remPage) ? 1 : remPage,
+              createdAt: Date.now(),
+            })
+          }
+        }
+        try { localStorage.setItem(storageKey, JSON.stringify(merged)) } catch { /* noop */ }
+        return merged
+      })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [itemKey, attachmentKey, storageKey])
+
+  // 划词与 Action Bar 状态
   const [selText, setSelText] = useState('')
   const [selBtn, setSelBtn] = useState<{ x: number; y: number; bottom: number } | null>(null)
+  const [actionBar, setActionBar] = useState<{
+    x: number
+    y: number
+    bottom: number
+    text: string
+    page: number
+    rects: Array<{ left: number; top: number; width: number; height: number }>
+  } | null>(null)
+  const [colorMenuOpen, setColorMenuOpen] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [noteContent, setNoteContent] = useState('')
+  const [selectedColor, setSelectedColor] = useState('#ffd400')
+  const [toast, setToast] = useState('')
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
   const [translating, setTranslating] = useState(false)
   const [bubble, setBubble] = useState<{ x: number; y: number; text?: string; error?: string } | null>(null)
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast((t) => (t === msg ? '' : t)), 2500)
+  }
 
   const scale = useMemo(() => (baseW > 0 && pageW > 0 ? (pageW / baseW) * factor : factor), [baseW, pageW, factor])
   // fit-width：页面高 = 页面宽 × 实测页比例（不再用 A4 近似，避免滚动/占位失真）
@@ -454,54 +525,196 @@ export function PdfReader(props: PdfReaderProps): JSX.Element {
     setFactor((f) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(f + delta).toFixed(2))))
   }
 
-  /* ── 划词 ── */
+  /* ── 划词与 Action Bar 交互 ── */
   function onMouseUp(): void {
     setTimeout(() => {
       const sel = window.getSelection()
-      const anchor = sel?.anchorNode
-      if (!sel || sel.isCollapsed || !anchor || !scrollRef.current?.contains(anchor)) {
-        setSelBtn(null)
-        setSelText('')
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        return
+      }
+      const anchor = sel.anchorNode
+      if (!anchor || !scrollRef.current?.contains(anchor)) {
         return
       }
       const text = sel.toString().replace(/\s+/g, ' ').trim()
       if (!text || text.length > 8000) {
-        setSelBtn(null)
-        setSelText('')
         return
       }
-      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      const range = sel.getRangeAt(0)
+      const pageEl = (anchor instanceof HTMLElement ? anchor : anchor.parentElement)?.closest('.dshz-pdf-page') as HTMLElement | null
+      const pageNum = pageEl?.dataset.page ? Number(pageEl.dataset.page) : current
+
+      const pageRect = pageEl ? pageEl.getBoundingClientRect() : null
+      const clientRects = Array.from(range.getClientRects())
+      const relativeRects = (pageRect && clientRects.length > 0)
+        ? clientRects.map((r) => ({
+            left: (r.left - pageRect.left) / pageRect.width,
+            top: (r.top - pageRect.top) / pageRect.height,
+            width: r.width / pageRect.width,
+            height: r.height / pageRect.height,
+          }))
+        : []
+
+      const selBounding = range.getBoundingClientRect()
+      const x = selBounding.left + selBounding.width / 2
+      // 若顶部空间不足 48px，放在下方
+      const y = selBounding.top > 52 ? selBounding.top - 8 : selBounding.bottom + 8
+
       setSelText(text)
-      setSelBtn({ x: rect.left + rect.width / 2, y: rect.top, bottom: rect.bottom })
+      setActionBar({
+        x,
+        y,
+        bottom: selBounding.bottom,
+        text,
+        page: pageNum,
+        rects: relativeRects,
+      })
+      setColorMenuOpen(false)
+      setNoteOpen(false)
       setBubble(null)
-    }, 12)
+    }, 15)
+  }
+
+  async function applyHighlight(color: string): Promise<void> {
+    if (!actionBar) return
+    const newId = `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    const newAnno: AnnotationItem = {
+      id: newId,
+      itemKey,
+      attachmentKey,
+      type: 'highlight',
+      color,
+      text: actionBar.text,
+      page: actionBar.page,
+      rects: actionBar.rects,
+      createdAt: Date.now(),
+    }
+    const nextList = [...annotations, newAnno]
+    saveAnnotations(nextList)
+    showToast('🖍️ 高亮已应用')
+    const barText = actionBar.text
+    const barPage = actionBar.page
+    closeOverlays()
+
+    if (itemKey) {
+      try {
+        const res = await annotatePost({
+          itemKey,
+          attachmentKey,
+          type: 'highlight',
+          text: barText,
+          color,
+          pageLabel: String(barPage),
+        })
+        if (res?.ok) {
+          showToast('🖍️ 高亮已落盘 (Zotero/MD)')
+        }
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+
+  async function saveNote(): Promise<void> {
+    if (!actionBar) return
+    const content = noteContent.trim()
+    if (!content) {
+      showToast('⚠️ 便签内容不能为空')
+      return
+    }
+    const newId = `note-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    const newAnno: AnnotationItem = {
+      id: newId,
+      itemKey,
+      attachmentKey,
+      type: 'note',
+      color: selectedColor,
+      text: actionBar.text,
+      comment: content,
+      page: actionBar.page,
+      rects: actionBar.rects,
+      createdAt: Date.now(),
+    }
+    const nextList = [...annotations, newAnno]
+    saveAnnotations(nextList)
+    showToast('📝 便签已记录')
+    const barText = actionBar.text
+    const barPage = actionBar.page
+    const chosenColor = selectedColor
+    closeOverlays()
+
+    if (itemKey) {
+      try {
+        const res = await annotatePost({
+          itemKey,
+          attachmentKey,
+          type: 'note',
+          text: barText,
+          comment: content,
+          color: chosenColor,
+          pageLabel: String(barPage),
+        })
+        if (res?.ok) {
+          showToast('📝 便签已落盘 (Zotero/MD)')
+        }
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+
+  function sendToChat(): void {
+    if (!actionBar) return
+    const { text, page } = actionBar
+    dispatchChatOpen({
+      target: 'paper',
+      itemKey: itemKey || attachmentKey,
+      title: props.title || itemKey || '论文精读',
+      quote: { page, text },
+    })
+    showToast('💬 已发送到文献 Chat 窗口')
+    closeOverlays()
   }
 
   async function doTranslate(): Promise<void> {
-    const text = selTextRef.current
-    const pos = selBtnRef.current
+    const text = actionBar?.text || selTextRef.current
+    const pos = actionBar
+      ? { x: actionBar.x, y: actionBar.bottom + 10 }
+      : selBtnRef.current
+      ? { x: selBtnRef.current.x, y: selBtnRef.current.bottom + 10 }
+      : null
     if (!text || !pos) return
+    setActionBar(null)
+    setColorMenuOpen(false)
+    setNoteOpen(false)
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
     setTranslating(true)
-    setBubble({ x: pos.x, y: pos.bottom + 10 })
+    setBubble({ x: pos.x, y: pos.y })
     try {
       const result = await translateTextSmart(text, itemKey, targetLang, ctrl.signal)
-      setBubble({ x: pos.x, y: pos.bottom + 10, text: result })
+      setBubble({ x: pos.x, y: pos.y, text: result })
     } catch (e: any) {
       if (e?.name === 'AbortError') return
-      setBubble({ x: pos.x, y: pos.bottom + 10, error: String(e?.message ?? e) })
+      setBubble({ x: pos.x, y: pos.y, error: String(e?.message ?? e) })
     } finally {
       setTranslating(false)
     }
   }
 
   function closeOverlays(): void {
+    setActionBar(null)
+    setColorMenuOpen(false)
+    setNoteOpen(false)
+    setNoteContent('')
     setSelBtn(null)
     setSelText('')
     setBubble(null)
     abortRef.current?.abort()
+    try {
+      window.getSelection()?.removeAllRanges()
+    } catch { /* noop */ }
   }
 
   /* ── 渲染 ── */
