@@ -43,7 +43,7 @@ const API = '/@dsh-external/dsh-zotero/api'
 /** 设置分组展开状态的 localStorage key。 */
 const CFG_OPEN_KEY = 'dshz-cfg-open'
 /** 构建标识（每轮改版递增；设置页可见，帮助识别浏览器是否加载新 bundle）。 */
-export const BUILD_TAG = 'b18-select-fixed-fix'
+export const BUILD_TAG = 'b19-action-bar-annotations'
 
 async function apiGet(path: string): Promise<any> {
   return (await fetch(`${API}${path}`)).json()
@@ -331,7 +331,7 @@ export function ZoteroPanel(props: { sessionId?: string } & Record<string, unkno
               /* ── 沉浸阅读：正文 + PdfReader 工具行占满；退出/回列表在工具行上 ── */
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <div className="dshz-pdf-wrap">
-                  <PdfReader attachmentKey={reading.attachmentKey} itemKey={reading.key} onBack={() => setReading(null)} />
+                  <PdfReader attachmentKey={reading.attachmentKey} itemKey={reading.key} title={reading.title} onBack={() => setReading(null)} />
                 </div>
               </div>
             ) : (
