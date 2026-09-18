@@ -681,6 +681,101 @@ export class ZoteroClient {
     }
   }
 
+  /** Create items (e.g. annotations, notes) in Zotero via POST /items */
+  async createItems(items: Array<Record<string, unknown>>): Promise<{
+    ok: boolean
+    source: ZoteroSource
+    successKeys: string[]
+    failed: Record<string, unknown>
+    error: string
+    hint: string
+    raw: unknown
+  }> {
+    const src = await this.resolveSource().catch((err: ZoteroApiError) => ({
+      source: 'none' as const,
+      base: '',
+      headers: {} as Record<string, string>,
+      libraryPath: '',
+      error: err.message,
+      hint: err.hint ?? '',
+    }))
+    if (src.source === 'none') {
+      return {
+        ok: false,
+        source: 'none',
+        successKeys: [],
+        failed: {},
+        error: (src as any).error || 'Zotero source unavailable',
+        hint: (src as any).hint || '',
+        raw: null,
+      }
+    }
+    const url = `${src.base}${src.libraryPath}/items`
+    const headers = {
+      ...src.headers,
+      'Content-Type': 'application/json',
+    }
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(items),
+        signal: this.mergeSignal(),
+      })
+      const text = await res.text()
+      const serverId = res.headers.get('Zotero-Server-ID')
+      if (serverId) this.serverId = serverId
+      let json: any = null
+      if (text) {
+        try {
+          json = JSON.parse(text)
+        } catch {
+          // non-json response
+        }
+      }
+      if (!res.ok) {
+        return {
+          ok: false,
+          source: src.source,
+          successKeys: [],
+          failed: json?.failed ?? {},
+          error: json?.message || `HTTP ${res.status}${text ? `: ${text.slice(0, 180)}` : ''}`,
+          hint: res.status === 403 ? 'Zotero 拒绝了写入请求（检查 localApiKey 或权限）' : '',
+          raw: json,
+        }
+      }
+      const successKeys: string[] = []
+      if (json?.successful && typeof json.successful === 'object') {
+        for (const val of Object.values(json.successful)) {
+          if ((val as any)?.key) successKeys.push(String((val as any).key))
+        }
+      } else if (json?.success && typeof json.success === 'object') {
+        for (const key of Object.values(json.success)) {
+          if (typeof key === 'string') successKeys.push(key)
+        }
+      }
+      return {
+        ok: true,
+        source: src.source,
+        successKeys,
+        failed: json?.failed ?? {},
+        error: '',
+        hint: '',
+        raw: json,
+      }
+    } catch (err: any) {
+      return {
+        ok: false,
+        source: src.source,
+        successKeys: [],
+        failed: {},
+        error: String(err?.message ?? err),
+        hint: '连接 Zotero 异常',
+        raw: null,
+      }
+    }
+  }
+
   /** List collections and build the hierarchy tree. */
   async collections(): Promise<{
     source: ZoteroSource

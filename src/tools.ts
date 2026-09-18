@@ -13,6 +13,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ZoteroClient } from './zotero/client.ts'
 import type { Config } from './config.ts'
+import { annotateItem } from './backend/annotations.ts'
 
 const renderJson = (_args: unknown, value: unknown) => [
   { type: 'text' as const, text: JSON.stringify(value, null, 2) },
@@ -331,11 +332,135 @@ export function registerZoteroTools(ctx: { tools: { register(tool: unknown): voi
         },
         render: renderJson,
       },
-      execute: async (_args, exec) => {
+      execute: async (_args: any, exec: any) => {
         return client.scoped(exec.signal).collections()
       },
       isConcurrencySafe: () => true,
       presentCall: () => ({ card: 'generic', title: 'Zotero 收藏夹', kind: 'other', rawInput: null }),
+    }),
+  )
+
+  /* ── zotero_annotate ───────────────────────────────────────────────── */
+
+  ctx.tools.register(
+    defineTool({
+      name: 'zotero_annotate',
+      description:
+        'Add an annotation (highlight, note, or comment) to a Zotero library item via Local API, and synchronize/append a structured Markdown note card into the local DSH workspace.',
+      parameters: {
+        itemKey: {
+          type: 'string',
+          description: 'Zotero item key (e.g. 8-char key like 4X8K9LP2).',
+        },
+        type: {
+          type: 'string',
+          enum: ['highlight', 'note', 'comment'],
+          description: 'Annotation type: highlight (高亮划线), note (独立笔记), or comment (批注心得).',
+        },
+        text: {
+          type: 'string',
+          description: 'Selected/quoted text from the literature (for highlight or quote).',
+        },
+        comment: {
+          type: 'string',
+          description: 'User or agent annotation thoughts, reflection, critique, or notes.',
+        },
+        color: {
+          type: 'string',
+          description: 'Color hex code for the highlight/annotation (e.g. #ffd400 for yellow, #ff6666 for red, #2ea8e5 for blue).',
+        },
+        pageLabel: {
+          type: 'string',
+          description: 'Page label or number (e.g. "5" or "p. 12").',
+        },
+        attachmentKey: {
+          type: 'string',
+          description: 'Optional attachment key of the PDF. Defaults to resolving the item primary PDF attachment.',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tags to attach to the annotation/note in Zotero and Markdown card.',
+        },
+        markdownPath: {
+          type: 'string',
+          description: 'Relative file path in workspace to write/append the Markdown card. Defaults to zotero-notes/<itemKey>.md.',
+        },
+        exportMarkdown: {
+          type: 'boolean',
+          description: 'Whether to write/append to local workspace Markdown file. Defaults to true.',
+        },
+        syncToZotero: {
+          type: 'boolean',
+          description: 'Whether to push to Zotero Local API. Defaults to true.',
+        },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean', required: true },
+            itemKey: { type: 'string', required: true },
+            type: { type: 'string', required: true },
+            zoteroCreated: { type: 'boolean', required: true },
+            zoteroItemKey: { type: 'string', required: true },
+            markdownSaved: { type: 'boolean', required: true },
+            markdownPath: { type: 'string', required: true },
+            citation: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                key: { type: 'string', required: true },
+                title: { type: 'string', required: true },
+                doi: { type: 'string', required: true },
+              },
+              required: true,
+            },
+            error: { type: 'string', required: true },
+            hint: { type: 'string', required: true },
+          },
+        },
+        render: renderJson,
+      },
+      execute: async (args: any, exec: any) => {
+        const a = args as Record<string, unknown>
+        const itemKey = String(a.itemKey || '')
+        const type = (['highlight', 'note', 'comment'].includes(String(a.type))
+          ? String(a.type)
+          : 'note') as 'highlight' | 'note' | 'comment'
+        const text = typeof a.text === 'string' ? a.text : undefined
+        const comment = typeof a.comment === 'string' ? a.comment : undefined
+        const color = typeof a.color === 'string' ? a.color : undefined
+        const pageLabel = typeof a.pageLabel === 'string' ? a.pageLabel : undefined
+        const attachmentKey = typeof a.attachmentKey === 'string' ? a.attachmentKey : undefined
+        const tags = Array.isArray(a.tags) ? a.tags.map(String) : undefined
+        const markdownPath = typeof a.markdownPath === 'string' ? a.markdownPath : undefined
+        const exportMarkdown = typeof a.exportMarkdown === 'boolean' ? a.exportMarkdown : true
+        const syncToZotero = typeof a.syncToZotero === 'boolean' ? a.syncToZotero : true
+
+        const scopedClient = client.scoped(exec?.signal)
+        return annotateItem(scopedClient, {
+          itemKey,
+          type,
+          text,
+          comment,
+          color,
+          pageLabel,
+          attachmentKey,
+          tags,
+          markdownPath,
+          exportMarkdown,
+          syncToZotero,
+        })
+      },
+      isConcurrencySafe: () => false,
+      presentCall: (args: any) => ({
+        card: 'generic',
+        title: `Zotero 批注: ${String(args?.itemKey ?? '')} (${String(args?.type ?? 'note')})`,
+        kind: 'other',
+        rawInput: args,
+      }),
     }),
   )
 
