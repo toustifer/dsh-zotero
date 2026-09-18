@@ -487,6 +487,9 @@ a.dshz-btn.primary{color:#fff}
 .dshz[data-dshz-root] button.dshz-btn.primary:hover{background-color:#3D9BFF !important}
 .dshz[data-dshz-root] button.dshz-btn:active{transform:scale(.96)}
 .dshz[data-dshz-root] button.dshz-btn:disabled{opacity:.4 !important;cursor:default !important}
+.dshz[data-dshz-root] button.dshz-action-btn{border-radius:18px !important;padding:5px 9px !important}
+.dshz[data-dshz-root] button.dshz-action-btn:hover{background-color:rgba(255,255,255,.14) !important}
+.dshz[data-dshz-root] button.dshz-action-btn.active{background-color:rgba(10,132,255,.28) !important;color:#6CB2FF !important}
 .dshz[data-dshz-root] .dshz-pills button.dshz-btn{border-radius:999px !important}
 .dshz[data-dshz-root] .dshz-inputwrap button.dshz-btn.primary{border-radius:999px !important}
 .dshz[data-dshz-root] .dshz-sec-tools button{border-radius:8px !important;background-color:transparent !important;color:var(--ios-dim) !important}
