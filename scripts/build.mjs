@@ -43,13 +43,11 @@ function linkPkg(rel, source) {
   if (!existsSync(abs)) fail(`dependency target missing: ${abs}`)
   const link = join(NM, rel)
   if (abs.toLowerCase() === link.toLowerCase()) return
+  // 幂等重建：rmSync 对 junction/symlink 只摘链、不跟进目标目录，
+  // 而 rmdir/unlink 在 Windows 上对目录型重解析点会静默失败（随后 symlinkSync EEXIST）。
   try {
-    rmdirSync(link)
-  } catch {
-    try {
-      unlinkSync(link)
-    } catch {}
-  }
+    rmSync(link, { recursive: true, force: true })
+  } catch {}
   mkdirSync(dirname(link), { recursive: true })
   symlinkSync(abs, link, process.platform === 'win32' ? 'junction' : 'dir')
 }

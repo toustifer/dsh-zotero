@@ -15,8 +15,16 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type LlmService from '@deepseek-ai/dsh-llm'
 import type { Config } from './config.ts'
 import { MineruClient, MineruError } from './mineru/client.ts'
-import { attachmentCacheDir, readCachedMd, writeCache } from './mineru/cache.ts'
+import {
+  attachmentCacheDir,
+  offlineAttachmentKeys,
+  readCachedMd,
+  readManifest,
+  rememberAttachments,
+  writeCache,
+} from './mineru/cache.ts'
 import { fetchAttachmentPdf } from './zotero/pdf.ts'
+import { renderAttachmentPage } from './zotero/render.js'
 import type { ZoteroClient } from './zotero/client.ts'
 import { resolveModel, streamText } from './ml.ts'
 import type { ResolvedModel } from './ml.ts'
@@ -77,13 +85,56 @@ export async function ensureParsed(
   exec?: { signal?: AbortSignal },
 ): Promise<ParsedPaper> {
   const cfg = currentConfig()
-  const got = itemKey ? await client.scoped(exec?.signal).getItem(itemKey) : null
+  let got: Awaited<ReturnType<ZoteroClient['getItem']>> | null = null
+  try {
+    got = itemKey ? await client.scoped(exec?.signal).getItem(itemKey) : null
+  } catch (err) {
+    // 兜底：正常路径下 getItem 不抛（见下面的 source==='none'），但别的实现可能抛。
+    got = { found: false, source: 'none' as const, item: null, error: String((err as Error)?.message ?? err), hint: '' }
+  }
+
+  /*
+   * Zotero 不可达（关着 / 重启中 / 崩了）—— **这一支才是真正的离线入口**。
+   *
+   * 注意 getItem 对"连不上"并不抛异常：client.ts 里 resolveSource 的 catch 把它
+   * 转成了 {found:false, source:'none', error:'...'}（第 605 行直接 return src）。
+   * 所以判据必须是返回值里的 source，用 try/catch 会写成死代码。
+   *
+   * 而缓存是按**附件 key** 落盘的，附件 key 只能问 Zotero 要 —— 于是全文明明就在
+   * 磁盘上，工具也只能报"条目不存在"。用之前成功查询时记下的索引
+   * （mineru/item-attachments.json）绕过去：命中就照常返回，只把 source 标成
+   * offline 让调用方知道这份是从盘上读的。
+   *
+   * source 同时用来区分两种失败：'none' = 够不着 Zotero（可走缓存）；
+   * 其他值 = Zotero 在线但这条不在库里（那是真的不存在，不该去翻缓存）。
+   */
+  if (itemKey && got && got.source === 'none') {
+    const alt = offlineAttachmentKeys(cfg, itemKey, attachmentKey)[0]
+    const cached = alt ? readCachedMd(cfg, alt) : null
+    if (cached) {
+      return {
+        attachmentKey: alt,
+        title: readManifest(cfg, alt)?.title || alt,
+        md: cached,
+        source: 'cache(offline: Zotero 不可达)',
+        cacheDir: attachmentCacheDir(cfg, alt),
+        textChars: cached.length,
+      }
+    }
+    throw new Error(
+      `${got.error}（该条目没有本地解析缓存，需要 Zotero 在线）`,
+    )
+  }
+
   if (itemKey && got && (!got.found || !got.item)) {
     throw new Error(`条目不存在: ${itemKey}（${got.error}）`)
   }
   // 附件直解析模式（itemKey 可空）：attachmentKey 必填，标题回退到附件名。
   const item = (got?.item ?? null) as { title?: string; attachments?: Array<{ key: string; isPdf: boolean; title?: string }> } | null
   const atts = item?.attachments ?? []
+  // Record itemKey -> attachment keys so a later call can still reach the cache
+  // when Zotero is unreachable (see the catch above).
+  if (itemKey) rememberAttachments(cfg, itemKey, atts.map((a) => a.key))
   const attachment = item
     ? (attachmentKey ? atts.find((a) => a.key === attachmentKey) : undefined) ?? atts.filter((a) => a.isPdf)[0]
     : null
@@ -831,6 +882,92 @@ export function registerM2Tools(
       presentCall: (args) => ({
         card: 'generic',
         title: '跨篇综述',
+        kind: 'other',
+        rawInput: args,
+      }),
+    }),
+  )
+
+  /* ── zotero_render_page：渲染 PDF 页面为 PNG ────────────────────── */
+
+  ctx.tools.register(
+    defineTool({
+      name: 'zotero_render_page',
+      description:
+        'Render a PDF page from a Zotero attachment to PNG for vision-capable models. Use when text extraction (zotero_read_fulltext) cannot recover table numbers, figure details, or boxed formulas. Returns a file path; caller should use read_image to inspect it. Works offline (storage fallback) when Zotero Local API is unreachable.',
+      parameters: {
+        itemKey: { type: 'string', required: true, description: 'Zotero item key (paper).' },
+        attachmentKey: { type: 'string', description: 'Attachment key (defaults to itemKey when only one PDF).' },
+        page: { type: 'integer', required: true, description: '1-based PDF page number.' },
+        dpi: { type: 'integer', description: 'Render DPI (default 150, max 300).' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            status: { type: 'string', required: true },
+            itemKey: { type: 'string', required: true },
+            attachmentKey: { type: 'string', required: true },
+            page: { type: 'integer', required: true },
+            file: { type: 'string', required: true },
+            width: { type: 'integer', required: true },
+            height: { type: 'integer', required: true },
+            bytes: { type: 'integer', required: true },
+            error: { type: 'string', required: true },
+            hint: { type: 'string', required: true },
+          },
+        },
+        render: renderJson,
+      },
+      timeoutMs: 60_000,
+      execute: async (args, exec) => {
+        const a = args as { itemKey: string; attachmentKey?: string; page: number; dpi?: number }
+        try {
+          const cfg = currentConfig()
+          const dpi = Math.max(50, Math.min(a.dpi ?? 150, 300))
+          const rendered = await renderAttachmentPage(
+            client,
+            cfg,
+            a.itemKey,
+            a.attachmentKey,
+            a.page,
+            dpi,
+            exec?.signal,
+          )
+          return {
+            status: 'ok',
+            itemKey: a.itemKey,
+            attachmentKey: rendered.attachmentKey,
+            page: rendered.page,
+            file: rendered.file,
+            width: rendered.width,
+            height: rendered.height,
+            bytes: rendered.bytes,
+            error: '',
+            hint: 'Use read_image to inspect this rendered page.',
+          }
+        } catch (err: any) {
+          return {
+            status: 'error',
+            itemKey: a.itemKey,
+            attachmentKey: a.attachmentKey ?? '',
+            page: a.page,
+            file: '',
+            width: 0,
+            height: 0,
+            bytes: 0,
+            error: String(err?.message ?? err),
+            hint: err?.message?.includes('pdftoppm')
+              ? 'pdftoppm 不可用：需要安装 poppler-utils (Linux/macOS) 或 MiKTeX (Windows)。'
+              : '',
+          }
+        }
+      },
+      isConcurrencySafe: () => true,
+      presentCall: (args) => ({
+        card: 'generic',
+        title: `渲染 PDF 页面: p${(args as any).page}`,
         kind: 'other',
         rawInput: args,
       }),
