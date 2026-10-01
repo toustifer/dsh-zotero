@@ -5,6 +5,19 @@
 **DSH hybrid 插件**：host（Cordis）直连 **Zotero Local API**（`127.0.0.1:23119`）+ **MinerU**（云端/本地）精读解析 + **pdf2zh** 全文翻译 + DSH 模型适配器；client（React）右侧栏面板 + 独立文献聊天窗。
 重构自 [yilewang/llm-for-zotero](https://github.com/yilewang/llm-for-zotero)（AGPL-3.0，出处与审计见 `docs/M0-audit.md`）。
 
+## 来历
+
+这个项目的代码谱系有一段前身，值得写明白：
+
+1. **[yilewang/llm-for-zotero](https://github.com/yilewang/llm-for-zotero)**（AGPL-3.0）—— 运行在 Zotero 进程内的客户端插件，本项目的重构源头与审计对象（见 `docs/M0-audit.md`）。
+2. **[Fisfzy/dsh-zotero](https://github.com/Fisfzy/dsh-zotero)** —— 该重构的早期 DSH 插件实现，2026-08 下旬起独立演进，`Initial commit` 为 `a4346e0`。**项目早期参考了这份实现。**
+
+2026-09 中旬起，本项目在同一条线上继续独立演进：批注同步与笔记回写、PDF 阅读器划词、`QuoteDock` 引用坞、全文双语、集合镜像工作区与远程执行目标 —— 这些在 `Fisfzy/dsh-zotero` 那一版里都不存在。
+
+后来因为两条线的代码已经几乎没有重合，本项目拆出来成为独立仓库（就是这里）。逐文件核对：`Fisfzy/dsh-zotero` 的 59 个文件在这里都有，其中 21 个已被改写、14 个是新增。
+
+感谢 Fisfzy 的早期工作，以及 yilewang 的 llm-for-zotero —— 上游审计留下的那把尺子，让很多决定不必重新试错。
+
 > 姊妹仓库：[toustifer/zotero-dsh](https://github.com/toustifer/zotero-dsh)（Zotero 侧，把 DSH 面板嵌进 Zotero 右侧栏）。
 > 本仓库是 DSH 侧的插件本体。
 

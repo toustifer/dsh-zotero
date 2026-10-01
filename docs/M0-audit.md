@@ -1,5 +1,10 @@
 # M0 审计报告：llm-for-zotero → DSH 插件移植
 
+> **谱系说明**：本报告审计的是第一个源头 yilewang/llm-for-zotero。
+> 之后早期曾参考 [Fisfzy/dsh-zotero](https://github.com/Fisfzy/dsh-zotero) 这份 DSH 插件实现
+> （它本身也是由 yilewang/llm-for-zotero 重构而来，`Initial commit` 为 `a4346e0`，2026-08-27）。
+> 2026-09 中旬起本项目独立演进，两者代码已几乎不重合，现已拆分为独立仓库。完整来历见 `README.md`。
+
 - 审计对象：https://github.com/yilewang/llm-for-zotero（浅克隆，`upstream/llm-for-zotero`）
 - 上游版本：package.json `version 3.9.2`；commit `32ce6a02f5cf61574bf03655bdda21f32e029cd0`（2026-08-25）
 - 规模：`src/` 下 495 个 TypeScript 文件；根目录含 `addon/`、`assets/`、`doc/`、`test*` 等
