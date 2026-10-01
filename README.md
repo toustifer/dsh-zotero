@@ -5,6 +5,9 @@
 **DSH hybrid 插件**：host（Cordis）直连 **Zotero Local API**（`127.0.0.1:23119`）+ **MinerU**（云端/本地）精读解析 + **pdf2zh** 全文翻译 + DSH 模型适配器；client（React）右侧栏面板 + 独立文献聊天窗。
 重构自 [yilewang/llm-for-zotero](https://github.com/yilewang/llm-for-zotero)（AGPL-3.0，出处与审计见 `docs/M0-audit.md`）。
 
+> 姊妹仓库：[toustifer/zotero-dsh](https://github.com/toustifer/zotero-dsh)（Zotero 侧，把 DSH 面板嵌进 Zotero 右侧栏）。
+> 本仓库是 DSH 侧的插件本体。
+
 ## 界面一览
 
 | 库检索与列表 | 沉浸式 PDF 阅读 | 文献库 Chat 浮窗 |
@@ -69,7 +72,7 @@
 ### 1. 获取代码
 
 ```bash
-git clone https://github.com/Fisfzy/dsh-zotero.git
+git clone https://github.com/toustifer/dsh-zotero.git
 cd dsh-zotero
 ```
 
